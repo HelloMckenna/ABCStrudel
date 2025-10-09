@@ -97,6 +97,7 @@
 
     // Major key accidental templates (adds sharps/flats automatically)
     const keyAccidentals = {
+      // Major keys
       'Cmaj': [],
       'Gmaj': ['F#'],
       'Dmaj': ['F#', 'C#'],
@@ -106,7 +107,43 @@
       'Fmaj': ['Bb'],
       'Bbmaj': ['Bb', 'Eb'],
       'Ebmaj': ['Bb', 'Eb', 'Ab'],
-      'Abmaj': ['Bb', 'Eb', 'Ab', 'Db']
+      'Abmaj': ['Bb', 'Eb', 'Ab', 'Db'],
+
+      // Natural minor keys (relative to major)
+      'Amin': [],
+      'Emin': ['F#'],
+      'Bmin': ['F#', 'C#'],
+      'F#min': ['F#', 'C#', 'G#'],
+      'C#min': ['F#', 'C#', 'G#', 'D#'],
+      'G#min': ['F#', 'C#', 'G#', 'D#', 'A#'],
+      'Dmin': ['Bb'],
+      'Gmin': ['Bb', 'Eb'],
+      'Cmin': ['Bb', 'Eb', 'Ab'],
+      'Fmin': ['Bb', 'Eb', 'Ab', 'Db'],
+
+      // Dorian mode (one flat less than the relative minor, or one sharp more than relative major)
+      'Ador': ['F#'],
+      'Edor': ['F#', 'C#'],
+      'Bdor': ['F#', 'C#', 'G#'],
+      'F#dor': ['F#', 'C#', 'G#', 'D#'],
+      'C#dor': ['F#', 'C#', 'G#', 'D#', 'A#'],
+      'G#dor': ['F#', 'C#', 'G#', 'D#', 'A#', 'E#'],
+      'Ddor': [],
+      'Gdor': ['Bb'],
+      'Cdor': ['Bb', 'Eb'],
+      'Fdor': ['Bb', 'Eb', 'Ab'],
+
+      // Mixolydian mode (one flat more than relative major, or one sharp less than relative major)
+      'Amix': ['F#', 'C#'],
+      'Emix': ['F#', 'C#','G#'],
+      'Bmix': ['F#', 'C#','G#', 'D#'],
+      'F#mix': ['F#', 'C#','G#', 'D#', 'A#'],
+      'C#mix': ['F#', 'C#','G#', 'D#', 'A#', 'E#'],
+      'G#mix': ['F#', 'C#','G#', 'D#', 'A#', 'E#', 'B#'],
+      'Dmix': ['F#'],
+      'Gmix': [],
+      'Cmix': ['Bb'],
+      'Fmix': ['Bb', 'Eb']
     };
 
     function parseHeader(lines) {
@@ -139,9 +176,10 @@
         .filter(Boolean);
     }
 
+    // Improved accidental logic
     function parseNotes(bar, key) {
       const accidentals = keyAccidentals[key] || [];
-      const tokens = bar.match(/[_^]?[A-Ga-g][',]?[0-9]?/g) || [];
+      const tokens = bar.match(/[_^]?[A-Ga-g][',]?[0-9]*/g) || [];
 
       return tokens.map(tok => {
         let dur = tok.match(/[0-9]+/);
@@ -152,10 +190,15 @@
         else if (tok.startsWith('_')) acc = '_', tok = tok.slice(1);
 
         const noteLetter = tok[0].toUpperCase();
+
         // Apply key signature sharps/flats if no explicit accidental
         if (!acc) {
-          if (accidentals.includes(noteLetter + '#')) acc = '^';
-          if (accidentals.includes(noteLetter + 'b')) acc = '_';
+          for (const accidental of accidentals) {
+            if (accidental[0].toUpperCase() === noteLetter) {
+              if (accidental[1] === '#') acc = '^';
+              if (accidental[1] === 'b') acc = '_';
+            }
+          }
         }
 
         let octave = /[a-g]/.test(tok[0]) ? 5 : 4;
