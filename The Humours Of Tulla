@@ -1,0 +1,14 @@
+// The Humours Of Tulla
+// 4/4 reel
+// Dmaj
+// 1/8 notes
+setcpm(2)
+
+$: note(`
+[[d5@2 a4 d5 b4 d5 a4 b4] [d5@2 f#5 d5 e5 d5 b4 c#5] 
+[d5@2 a4 d5 b4 d5 a4 d5] <[b4 c#5 d5 e5 f#5 g5@2 f#5 e5]
+                          [b4 c#5 d5 e5 f#5 g5@2 f#5 g5]>]*2 
+[[a5 f#5 f#5@2 d5 f#5 f#5@2] [a5 f#5 f#5@2 g5@2 f#5 g5] 
+[a5 f#5 f#5@2 d5 f#5 e5 d5] <[b4 c#5 d5 e5 f#5 g5@2 f#5 g5]
+                            [b4 c#5 d5 e5 f#5 g5@2 f#5 e5]>]*2
+`).sound("piano")
