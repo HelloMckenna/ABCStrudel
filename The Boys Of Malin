@@ -1,0 +1,22 @@
+// The Boys Of Malin
+// 4/4 reel
+// Amaj
+// 1/8 notes
+setcpm(2)
+
+$: note(`
+[[a4 b4 c#5 d5 e5 a4 c#5 e5] [f#5 e5 d5 f#5 e5 d5 c#5 b4] 
+[a4 b4 c#5 d5 e5 a4 c#5 e5] <[f#5 e5 b4 c#5 d5@2 c#5 b4] 
+                             [f#5 e5 b4 c#5 d5 e5 f#5 g#5]>] *2
+
+[[a5 a4 a4 a4 c#5 a4 c#5 e5] [a5 b5 a5 g#5 f#5 e5 f#5 g#5] 
+[a5 a4 a4 a4 c#5 a4 c#5 e5] [d5 c#5 b4 c#5 d5 e5 f#5 g#5] 
+[a5 a4 a4 a4 c#5 a4 c#5 e5] [a5 b5 a5 g#5 f#5@2 g#5@2] 
+[a5 f#5 f#5 e5 f#5 e5 d5 c#5] [d5 c#5 b4 c#5 d5@2 c#5 b4]]
+
+[[a4 e5 c#5 e5 a4 e5 c#5 e5] [a4 e5 c#5 e5 d5@2 c#5 b4] 
+[a4 e5 c#5 e5 a4 e5 c#5 e5] [f#5 e5 b4 c#5 d5@2 c#5 b4]]*2
+`).sound("piano")
+
+
+
