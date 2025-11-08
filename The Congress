@@ -14,4 +14,4 @@ $: note(`
 [e5 g5 d5 g5 e5 g5 d5 g5] [e5 a5 a5 f#5 g5 e5 d5 g5]
 [e5 a5 a5 g5 a5@2 a5 g5] [e5 a5 a5 f#5 g5 e5 d5 b4] 
 [c5@2 c5 d5 e5@2 e5 d5] [c5 a4 b4 g4 a4@2 b4 d5]]*2
-`).sound("piano")._punchcard()
+`).sound("piano")
