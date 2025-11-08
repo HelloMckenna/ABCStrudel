@@ -190,28 +190,16 @@
 
     // Convert |: to [[ and handle alternate endings
     function markRepeats(body) {
-      console.log('Original body:', body);
-      
       // Handle alternate endings with |1 and |2
       // Pattern: |1 content :|2 content || (note: no space between :| and |2)
       body = body.replace(/\|1\s*(.+?):\|2\s*(.+?)\|\|/g, (match, ending1, ending2) => {
-        console.log('Match found:', match);
-        console.log('Ending1:', ending1);
-        console.log('Ending2:', ending2);
-        // Wrap ending1 and ending2 with angle brackets
-        // Use a placeholder @NEWLINE@ for the line break between endings
-        return '|<' + ending1.trim() + '>|@NEWLINE@<' + ending2.trim() + '>]]';
+        // Use @SPLIT@ marker to indicate where second ending starts
+        // Only wrap the whole alternate section with angle brackets
+        return '|<' + ending1.trim() + '|@SPLIT@' + ending2.trim() + '>]]';
       });
-      
-      console.log('After alternate endings:', body);
       
       // Convert standard repeats |: to [[ and :| to ]]
       body = body.replace(/\|:/g, '[[').replace(/:\|/g, ']]');
-      
-      // Now replace the placeholder with actual newline in bar structure
-      body = body.replace(/@NEWLINE@/g, '');
-      
-      console.log('After standard repeats:', body);
       
       return body;
     }
@@ -228,14 +216,16 @@
         .map(b => b.trim())
         .filter(Boolean)
         .map(b => {
-          // Mark bars with < or > for alternate endings
+          // Mark bars with < or > for alternate endings and @SPLIT@ for second ending start
           const hasOpenAngle = b.includes('<');
           const hasCloseAngle = b.includes('>');
-          const content = b.replace(/[<>12]/g, ''); // Remove markers and ending numbers
+          const isSplitPoint = b.includes('@SPLIT@');
+          const content = b.replace(/[<>12]/g, '').replace(/@SPLIT@/g, ''); // Remove markers
           return { 
             content, 
             openAngle: hasOpenAngle, 
-            closeAngle: hasCloseAngle 
+            closeAngle: hasCloseAngle,
+            isSplitPoint: isSplitPoint
           };
         });
     }
@@ -392,81 +382,79 @@
         if (typeof b === 'object' && b.repeat) {
           const innerBars = splitBars(b.content);
           
-          // Find the range of bars for each ending
-          let firstAngleStart = -1;
-          let firstAngleEnd = -1;
-          let secondAngleStart = -1;
-          let secondAngleEnd = -1;
-          
-          let foundFirstClose = false;
+          // Find where alternate endings start and where the split point is
+          let alternateStart = -1;
+          let splitPoint = -1;
+          let alternateEnd = -1;
           
           for (let i = 0; i < innerBars.length; i++) {
-            if (innerBars[i].openAngle && firstAngleStart === -1) {
-              firstAngleStart = i;
+            if (innerBars[i].openAngle) {
+              alternateStart = i;
             }
-            if (innerBars[i].closeAngle && !foundFirstClose) {
-              firstAngleEnd = i;
-              foundFirstClose = true;
+            if (innerBars[i].isSplitPoint) {
+              splitPoint = i;
             }
-            if (innerBars[i].openAngle && foundFirstClose && secondAngleStart === -1) {
-              secondAngleStart = i;
-            }
-            if (innerBars[i].closeAngle && secondAngleStart !== -1 && secondAngleEnd === -1) {
-              secondAngleEnd = i;
+            if (innerBars[i].closeAngle) {
+              alternateEnd = i;
             }
           }
-          
-          console.log('Angle positions:', { firstAngleStart, firstAngleEnd, secondAngleStart, secondAngleEnd });
           
           const formattedInnerBars = innerBars.map((bar, idx) => {
             const notes = parseNotes(bar, header.key);
             let prefix = '';
             let suffix = '';
+            let addNewlineAfter = false;
             
-            // Add < to the first bar of first ending
-            if (idx === firstAngleStart) {
+            // Add < at the start of alternate endings (before first ending)
+            if (idx === alternateStart) {
               prefix = '<';
             }
-            // Add > to the last bar of first ending and newline
-            if (idx === firstAngleEnd) {
-              suffix = '>\n';
+            
+            // Add newline at the last bar before split point
+            if (splitPoint !== -1 && idx === splitPoint - 1) {
+              addNewlineAfter = true;
             }
-            // Add indentation and < to the first bar of second ending
-            if (idx === secondAngleStart) {
-              prefix = '                            <';
-            }
-            // Add > to the last bar of second ending
-            if (idx === secondAngleEnd) {
+            
+            // Add > at the end of alternate endings (after second ending)
+            if (idx === alternateEnd) {
               suffix = '>';
             }
             
-            return `${prefix}[${notes}]${suffix}`;
+            return { formatted: `${prefix}[${notes}]${suffix}`, addNewlineAfter, isSplitPoint: bar.isSplitPoint };
           });
           
-          // Group bars into pairs (max 2 per line), but respect manual newlines
+          // Group bars into lines (max 2 per line), respecting newlines for alternate endings
           const lines = [];
           let currentLine = [];
           
           for (let i = 0; i < formattedInnerBars.length; i++) {
-            const bar = formattedInnerBars[i];
-            if (bar.includes('\n')) {
-              // This bar ends the first ending
-              currentLine.push(bar.replace('\n', ''));
+            const barInfo = formattedInnerBars[i];
+            
+            if (barInfo.addNewlineAfter) {
+              // Add this bar to current line, then end the line (first ending ends)
+              currentLine.push(barInfo.formatted);
               lines.push(currentLine.join(' '));
               currentLine = [];
+            } else if (barInfo.isSplitPoint) {
+              // This is the start of second ending - start a new indented line
+              const indentation = '                             '; // Align with bars above
+              currentLine.push(indentation + barInfo.formatted);
             } else {
-              currentLine.push(bar);
-              if (currentLine.length === 2 && i < formattedInnerBars.length - 1 && !formattedInnerBars[i+1].includes('\n')) {
+              // Normal bar - add to current line
+              currentLine.push(barInfo.formatted);
+              // If we have 2 bars and we're not at the end, start a new line
+              if (currentLine.length === 2 && i < formattedInnerBars.length - 1) {
                 lines.push(currentLine.join(' '));
                 currentLine = [];
               }
             }
           }
+          
           if (currentLine.length > 0) {
             lines.push(currentLine.join(' '));
           }
           
-          return `[${lines.join(' \n')}]*2\n`;
+          return `[${lines.join(' \n')}] *2\n`;
         } else {
           return `[${parseNotes(b, header.key)}]`;
         }
