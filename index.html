@@ -54,6 +54,36 @@
       font-size: 0.8rem;
       color: #666;
     }
+
+    /* Simple modal styles for manual-copy fallback */
+    .copy-overlay {
+      position: fixed;
+      left: 0; top: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    .copy-modal {
+      background: #fff;
+      border-radius: 8px;
+      padding: 16px;
+      max-width: 700px;
+      width: calc(100% - 40px);
+      box-shadow: 0 8px 24px rgba(0,0,0,.2);
+    }
+    .copy-modal textarea {
+      height: 180px;
+      margin-top: 8px;
+    }
+    .copy-modal .copy-actions {
+      margin-top: 8px;
+      text-align: right;
+    }
+    .copy-modal .copy-actions button {
+      margin-left: 8px;
+    }
   </style>
 </head>
 <body>
@@ -158,9 +188,32 @@
       return header;
     }
 
-    // Expand |: ... :| → [section]*2
+    // Convert |: to [[ and handle alternate endings
     function markRepeats(body) {
-      return body.replace(/\|:\s*([^:]+?)\s*:\|/g, (m, section) => `[${section.trim()}]*2`);
+      console.log('Original body:', body);
+      
+      // Handle alternate endings with |1 and |2
+      // Pattern: |1 content :|2 content || (note: no space between :| and |2)
+      body = body.replace(/\|1\s*(.+?):\|2\s*(.+?)\|\|/g, (match, ending1, ending2) => {
+        console.log('Match found:', match);
+        console.log('Ending1:', ending1);
+        console.log('Ending2:', ending2);
+        // Wrap ending1 and ending2 with angle brackets
+        // Use a placeholder @NEWLINE@ for the line break between endings
+        return '|<' + ending1.trim() + '>|@NEWLINE@<' + ending2.trim() + '>]]';
+      });
+      
+      console.log('After alternate endings:', body);
+      
+      // Convert standard repeats |: to [[ and :| to ]]
+      body = body.replace(/\|:/g, '[[').replace(/:\|/g, ']]');
+      
+      // Now replace the placeholder with actual newline in bar structure
+      body = body.replace(/@NEWLINE@/g, '');
+      
+      console.log('After standard repeats:', body);
+      
+      return body;
     }
 
     function splitBars(abc) {
@@ -173,13 +226,26 @@
         .trim()
         .split('|')
         .map(b => b.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .map(b => {
+          // Mark bars with < or > for alternate endings
+          const hasOpenAngle = b.includes('<');
+          const hasCloseAngle = b.includes('>');
+          const content = b.replace(/[<>12]/g, ''); // Remove markers and ending numbers
+          return { 
+            content, 
+            openAngle: hasOpenAngle, 
+            closeAngle: hasCloseAngle 
+          };
+        });
     }
 
     // Improved accidental logic
     function parseNotes(bar, key) {
+      // Handle both string and object formats
+      const barContent = typeof bar === 'string' ? bar : bar.content;
       const accidentals = keyAccidentals[key] || [];
-      const tokens = bar.match(/[_^]?[A-Ga-g][',]?[0-9]*/g) || [];
+      const tokens = barContent.match(/[_^]?[A-Ga-g][',]?[0-9]*/g) || [];
 
       return tokens.map(tok => {
         let dur = tok.match(/[0-9]+/);
@@ -210,6 +276,94 @@
       }).join(' ');
     }
 
+    // ---------- New helpers added ----------
+    // Unified copy helper with async Clipboard API + execCommand fallback.
+    function copyToClipboard(text) {
+      // Prefer navigator.clipboard.writeText when available
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        // Optional permission query (informative) — still call writeText
+        if (navigator.permissions && navigator.permissions.query) {
+          return navigator.permissions.query({ name: 'clipboard-write' })
+            .catch(() => ({ state: 'prompt' })) // ignore permission-query errors
+            .then(() => navigator.clipboard.writeText(text));
+        }
+        return navigator.clipboard.writeText(text);
+      }
+
+      // Fallback to legacy execCommand
+      return new Promise((resolve, reject) => {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'absolute';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          if (ok) resolve();
+          else reject(new Error('execCommand copy failed'));
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+
+    // Manual fallback modal if programmatic copy is blocked
+    function showManualCopyModal(text) {
+      // If modal already exists, remove it
+      const existing = document.querySelector('.copy-overlay');
+      if (existing) existing.remove();
+
+      const overlay = document.createElement('div');
+      overlay.className = 'copy-overlay';
+
+      const box = document.createElement('div');
+      box.className = 'copy-modal';
+
+      const title = document.createElement('div');
+      title.textContent = 'Automatic copy failed. Select the text below and press Ctrl/Cmd+C to copy:';
+      box.appendChild(title);
+
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      box.appendChild(ta);
+
+      const actions = document.createElement('div');
+      actions.className = 'copy-actions';
+
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Close';
+      closeBtn.onclick = () => overlay.remove();
+
+      const doneBtn = document.createElement('button');
+      doneBtn.textContent = 'Done';
+      doneBtn.onclick = () => overlay.remove();
+
+      actions.appendChild(closeBtn);
+      actions.appendChild(doneBtn);
+      box.appendChild(actions);
+
+      overlay.appendChild(box);
+      document.body.appendChild(overlay);
+
+      // Focus and select for easy manual copying
+      ta.focus();
+      ta.select();
+    }
+
+    let _copyTimeout = null;
+    function indicateCopied() {
+      const btn = document.querySelector('button[onclick="convertABC()"]');
+      if (!btn) return;
+      clearTimeout(_copyTimeout);
+      const original = btn.textContent;
+      btn.textContent = 'Copied!';
+      _copyTimeout = setTimeout(() => { btn.textContent = original; }, 1400);
+    }
+    // ---------- end new helpers ----------
+
     function convertABC() {
       const input = document.getElementById('abcInput').value.trim();
       const sound = document.getElementById('sound').value;
@@ -221,9 +375,9 @@
       let body = lines.slice(bodyStart + 1).join(' ');
       body = markRepeats(body);
 
-      // Split bars but preserve [ ... ]*2 as repeat blocks
+      // Split bars but preserve [[ ... ]] as repeat blocks
       const repeatBlocks = [];
-      const regex = /\[([^*]+)\]\*2/g;
+      const regex = /\[\[([^\]]+)\]\]/g;
       let match, lastIndex = 0;
       while ((match = regex.exec(body)) !== null) {
         const before = body.slice(lastIndex, match.index).trim();
@@ -236,8 +390,83 @@
 
       const formattedBars = repeatBlocks.map(b => {
         if (typeof b === 'object' && b.repeat) {
-          const innerBars = splitBars(b.content).map(inner => `[${parseNotes(inner, header.key)}]`).join(' ');
-          return `${innerBars}*2`;
+          const innerBars = splitBars(b.content);
+          
+          // Find the range of bars for each ending
+          let firstAngleStart = -1;
+          let firstAngleEnd = -1;
+          let secondAngleStart = -1;
+          let secondAngleEnd = -1;
+          
+          let foundFirstClose = false;
+          
+          for (let i = 0; i < innerBars.length; i++) {
+            if (innerBars[i].openAngle && firstAngleStart === -1) {
+              firstAngleStart = i;
+            }
+            if (innerBars[i].closeAngle && !foundFirstClose) {
+              firstAngleEnd = i;
+              foundFirstClose = true;
+            }
+            if (innerBars[i].openAngle && foundFirstClose && secondAngleStart === -1) {
+              secondAngleStart = i;
+            }
+            if (innerBars[i].closeAngle && secondAngleStart !== -1 && secondAngleEnd === -1) {
+              secondAngleEnd = i;
+            }
+          }
+          
+          console.log('Angle positions:', { firstAngleStart, firstAngleEnd, secondAngleStart, secondAngleEnd });
+          
+          const formattedInnerBars = innerBars.map((bar, idx) => {
+            const notes = parseNotes(bar, header.key);
+            let prefix = '';
+            let suffix = '';
+            
+            // Add < to the first bar of first ending
+            if (idx === firstAngleStart) {
+              prefix = '<';
+            }
+            // Add > to the last bar of first ending and newline
+            if (idx === firstAngleEnd) {
+              suffix = '>\n';
+            }
+            // Add indentation and < to the first bar of second ending
+            if (idx === secondAngleStart) {
+              prefix = '                            <';
+            }
+            // Add > to the last bar of second ending
+            if (idx === secondAngleEnd) {
+              suffix = '>';
+            }
+            
+            return `${prefix}[${notes}]${suffix}`;
+          });
+          
+          // Group bars into pairs (max 2 per line), but respect manual newlines
+          const lines = [];
+          let currentLine = [];
+          
+          for (let i = 0; i < formattedInnerBars.length; i++) {
+            const bar = formattedInnerBars[i];
+            if (bar.includes('\n')) {
+              // This bar ends the first ending
+              currentLine.push(bar.replace('\n', ''));
+              lines.push(currentLine.join(' '));
+              currentLine = [];
+            } else {
+              currentLine.push(bar);
+              if (currentLine.length === 2 && i < formattedInnerBars.length - 1 && !formattedInnerBars[i+1].includes('\n')) {
+                lines.push(currentLine.join(' '));
+                currentLine = [];
+              }
+            }
+          }
+          if (currentLine.length > 0) {
+            lines.push(currentLine.join(' '));
+          }
+          
+          return `[${lines.join(' \n')}]*2\n`;
         } else {
           return `[${parseNotes(b, header.key)}]`;
         }
@@ -254,8 +483,46 @@ $: note(\`
 ${formattedBars}
 \`).sound("${sound}")`;
 
-      document.getElementById('strudelOutput').textContent = output;
+      const outEl = document.getElementById('strudelOutput');
+      outEl.textContent = output;
+
+      // Try to copy the generated output to clipboard (smart flow)
+      copyToClipboard(output)
+        .then(() => {
+          indicateCopied();
+        })
+        .catch(err => {
+          console.warn('Auto-copy failed:', err);
+          // show manual copy modal so the user can copy themselves
+          showManualCopyModal(output);
+        });
     }
+
+    // Auto-convert + copy when the user pastes into the textarea
+    (function attachPasteAutoConvert() {
+      const abcInput = document.getElementById('abcInput');
+      if (!abcInput) return;
+      let _pasteTimer = null;
+      abcInput.addEventListener('paste', (e) => {
+        // Wait a tick so pasted content is inserted into textarea
+        clearTimeout(_pasteTimer);
+        _pasteTimer = setTimeout(() => {
+          convertABC();
+        }, 50);
+      });
+    })();
+
+    // Optional: keyboard shortcut (Ctrl/Cmd+Enter) to convert manually
+    (function attachShortcut() {
+      const abcInput = document.getElementById('abcInput');
+      if (!abcInput) return;
+      abcInput.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          convertABC();
+        }
+      });
+    })();
   </script>
 </body>
 </html>
